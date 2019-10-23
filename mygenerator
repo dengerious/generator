@@ -1,0 +1,587 @@
+package com.cmcc.cmii.mdns.util.generator;
+
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.commons.lang.StringUtils;
+
+public class MyCodeGenerator {
+	private static final String ds_driver = "com.mysql.cj.jdbc.Driver";
+	private static final String ds_url = "jdbc:mysql://192.168.10.10:3306/yidong?useUnicode=true&useSSL=false&characterEncoding=utf8&serverTimezone=UTC";
+	private static final String ds_username = "root";
+	private static final String ds_password = "Wiselink4100!";
+	private static final String nowdate = new SimpleDateFormat("yyyy-MM-dd").format(new Date());
+	private static final String appPath = System.getProperty("user.dir");
+	private static final String javaPackage = "\\src\\main\\java\\";
+	private static final String resourcePackage = "\\src\\main\\resources\\";
+	private static final String entityPackage = "com\\cmcc\\cmii\\mdns\\model\\entity\\wiselink";
+	private static final String servicePackage = "com\\cmcc\\cmii\\mdns\\service\\service\\wiselink";
+	private static final String ctrPackage = "com\\cmcc\\cmii\\mdns\\service\\controller\\wiselink";
+	private static final String serviceimplPackage = "com\\cmcc\\cmii\\mdns\\service\\service\\wiselink\\impl";
+	private static final String mapperPackage = "com\\cmcc\\cmii\\mdns\\service\\mapper\\wiselink";
+	private static final String xmlPackage = "mapper\\wiselink";
+	private static HashMap<String, String> dataType;// 数据类型对应关系
+	static {
+		dataType = new HashMap<String, String>();
+		dataType.put("varchar", "String");
+		dataType.put("text", "String");
+		dataType.put("int", "Integer");
+		dataType.put("datetime", "LocalDateTime");
+		dataType.put("decimal", "BigDecimal");
+		dataType.put("date", "LocalDate");
+		dataType.put("json", "JSON");
+
+		try {
+			Class.forName(ds_driver);// 加载数据库驱动
+		} catch (ClassNotFoundException e) {
+			e.printStackTrace();
+		}
+	}
+
+	public static void main(String[] args) {
+		String tablename = "test_table";
+		createService(tablename, "ming", "");
+
+	}
+
+	/**
+	 * 代码生成(包含service(service、mapper)和entity)
+	 * 
+	 * @param tablename    表名
+	 * @param author       作者名
+	 * @param databasename 数据库名
+	 */
+	public static void create(String tablename, String author, String databasename) {
+		createEntity(tablename, author, databasename);
+		createService(tablename, author, databasename);
+	}
+
+	/**
+	 * 代码生成（包含service(service、mapper)和entity-默认数据库名）
+	 * 
+	 * @param tablename 表名
+	 * @param author    作者名
+	 */
+	public static void create(String tablename, String author) {
+		createEntity(tablename, author);
+		createService(tablename, author);
+	}
+
+	/**
+	 * 代码生成（包含service(service、mapper)和entity-默认数据库名、作者名）
+	 * 
+	 * @param tablename 表名
+	 */
+	public static void create(String tablename) {
+		createEntity(tablename);
+		createService(tablename);
+	}
+
+	/**
+	 * 获取表注释
+	 * 
+	 * @param tableName    表名
+	 * @param databasename 数据库名，默认yidong
+	 * @return 表注释
+	 */
+	public static String getTableComment(String tableName, String databasename) {
+		List<Map<String, String>> list = new ArrayList<Map<String, String>>();
+		if (databasename == null || "".equals(databasename)) {
+			databasename = "yidong";
+		}
+		if (tableName == null || "".equals(tableName)) {
+			try {
+				throw new Exception("查询字段名的时候表名不能为空");
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+		String sss = "";
+		// 与数据库的连接
+		Connection conn = null;
+		PreparedStatement pStemt = null;
+		String sql = "select TABLE_NAME,TABLE_COMMENT from information_schema.TABLES where table_name = '" + tableName
+				+ "' and table_schema = '" + databasename + "'";
+		try {
+			conn = getConnection();
+			pStemt = conn.prepareStatement(sql);
+			ResultSet rs = pStemt.executeQuery();
+			while (rs.next()) {
+				Map<String, String> map = new HashMap<String, String>();
+				map.put(rs.getString("TABLE_NAME"), rs.getString("TABLE_COMMENT"));
+				list.add(map);
+			}
+			sss = list.get(0).get(tableName);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return sss;
+	}
+
+	/**
+	 * 获取表中所有字段名称、字段注释
+	 * 
+	 * @param tableName    表名
+	 * @param databasename 数据库库名
+	 * @return
+	 * @throws Exception
+	 */
+	public static List<TableInfo> getColumns(String tableName, String databasename) {
+		List<TableInfo> columns = new ArrayList<>();
+		if (databasename == null || "".equals(databasename)) {
+			databasename = "yidong";
+		}
+		if (tableName == null || "".equals(tableName)) {
+			try {
+				throw new Exception("查询字段名的时候表名不能为空");
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+		// 与数据库的连接
+		Connection conn = null;
+		PreparedStatement pStemt = null;
+		String sql = "select COLUMN_NAME,DATA_TYPE,COLUMN_COMMENT,COLUMN_KEY from information_schema.COLUMNS where table_name = '"
+				+ tableName + "' and table_schema = '" + databasename + "'";
+		try {
+			conn = getConnection();
+			pStemt = conn.prepareStatement(sql);
+			ResultSet rs = pStemt.executeQuery();
+			while (rs.next()) {
+				TableInfo tableInfo = new TableInfo();
+				tableInfo.setColumnName(rs.getString("COLUMN_NAME"));
+				tableInfo.setColumnType(rs.getString("DATA_TYPE"));
+				tableInfo.setColumnComment(rs.getString("COLUMN_COMMENT"));
+				tableInfo.setPrimaryKey(rs.getString("COLUMN_KEY"));
+				columns.add(tableInfo);
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		} finally {
+			if (pStemt != null) {
+				try {
+					pStemt.close();
+					if (conn != null) {
+						conn.close();
+					}
+				} catch (SQLException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		return columns;
+	}
+
+	/**
+	 * 创建controller,默认数据库名（yidong）,默认作者（wiselink）
+	 * 
+	 * @param tablename 表名
+	 */
+	public static void createController(String tablename) {
+		createController(tablename, "wiselink");
+	}
+
+	/**
+	 * 创建controller,默认数据库名（yidong）
+	 * 
+	 * @param tablename 表名
+	 * @param author    作者
+	 */
+	public static void createController(String tablename, String author) {
+		createController(tablename, author, "yidong");
+	}
+
+	/**
+	 * 创建controller
+	 * 
+	 * @param tablename    表名
+	 * @param author       作者
+	 * @param databasename 数据库名
+	 */
+	public static void createController(String tablename, String author, String databasename) {
+		try {
+			// 要单独生成controller,必须要先有对应实体,所以先生成实体
+			createEntity(tablename, author, databasename);
+			System.out.println("********************准备生成controller***********************************");
+			String tableComment = getTableComment(tablename, databasename);// 表注释
+			if ("".equals(tableComment) || null == tableComment) {
+				throw new Exception("表结构可能为空或表不存在于对应库中");
+			}
+			List<TableInfo> columns = getColumns(tablename, databasename);// 所有的字段和属性
+			if (columns.size() == 0) {
+				throw new Exception("表结构可能为空或表不存在于对应库中");
+			}
+			StringBuilder importPackage = new StringBuilder();// 存放需要导入的包
+			StringBuilder code = new StringBuilder();// 整体文件
+
+			// 需要导入公共包(包含ID自增、ID注明、非主键著名、序列化、lombok相关包的导入)
+			importPackage.append("import org.springframework.web.bind.annotation.RequestMapping;\n")
+					.append("import org.springframework.web.bind.annotation.RestController;\n")
+					.append("import " + entityPackage.replaceAll("\\\\", ".") + "." + toCamelName(tablename, true)
+							+ ";\n")
+					.append("import com.cmcc.cmii.mdns.service.controller.BaseController;\n")
+					.append("import io.swagger.annotations.Api;\n");
+			// 拼接文件内容
+			// 声明包
+			code.append("package ").append(ctrPackage.replaceAll("\\\\", ".")).append(";\n\n");
+			System.out.println("写入：声明包完成...............");
+			// 导入包
+			code.append(importPackage);
+			System.out.println("写入：导入包完成...............");
+			// 类注释
+			code.append("\n/** \n * <p>\n * \t" + tableComment + " controller\n * </p>\n *\n")
+					.append(" * @author " + author + "\n").append(" * @since " + nowdate + "\n */\n");
+			System.out.println("写入：类注释完成...............");
+			// 类注解
+			code.append("@RestController\n").append("@RequestMapping(\"/\")\n")
+					.append("@Api(value = \"" + tableComment + "\",description = \"" + tableComment + "\")\n");
+			System.out.println("写入：类注解完成...............");
+			// class外层
+			code.append("public class " + toCamelName(tablename, true) + "Controller extends BaseController<"
+					+ toCamelName(tablename, true) + "> {\n");
+			// 属性
+			code.append("}");
+			System.out.println("写入：class完成...............");
+
+			// 获取项目所在的本地路径
+			String projectPath = appPath.substring(0, appPath.lastIndexOf("\\")) + "\\mdns-service";// 存放路径
+			String entityClassName = toCamelName(tablename, true);
+			String filename = projectPath + javaPackage + ctrPackage + "\\" + entityClassName + "Controller.java";
+			writeFiles(filename, code.toString());
+			System.out.println("***********************controller生成完成********************************");
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	/**
+	 * 创建service,默认数据库名(yidong)
+	 * 
+	 * @param tablename 表名
+	 * @param author    作者，用于类注释
+	 */
+	public static void createService(String tablename, String author) {
+		createService(tablename, author, null);
+	}
+
+	/**
+	 * 创建service,默认作者(wiselink),默认数据库名(yidong)
+	 * 
+	 * @param tablename 表名
+	 */
+	public static void createService(String tablename) {
+		createService(tablename, "wiselink");
+	}
+
+	/**
+	 * 根据表名生成service、serviceimpl
+	 * 
+	 * @param tablename    表名
+	 * @param author       作者
+	 * @param databasename 数据库名
+	 */
+	public static void createService(String tablename, String author, String databasename) {
+		try {
+			System.out.println("***********************准备生成service、serviceimpl****************************");
+			StringBuilder servicecode = new StringBuilder();
+			StringBuilder serviceimplcode = new StringBuilder();
+			StringBuilder mappercode = new StringBuilder();
+			StringBuilder xmlcode = new StringBuilder();
+			String tableComment = getTableComment(tablename, databasename);// 表注释
+			if ("".equals(tableComment) || null == tableComment) {
+				throw new Exception("表结构可能为空或表不存在于对应库中");
+			}
+			List<TableInfo> columns = getColumns(tablename, databasename);// 所有的字段和属性
+			if (columns.size() == 0) {
+				throw new Exception("表结构可能为空或表不存在于对应库中");
+			}
+			String ep = entityPackage.replaceAll("\\\\", ".");
+			String sp = servicePackage.replaceAll("\\\\", ".");
+			String sip = serviceimplPackage.replaceAll("\\\\", ".");
+			String mp = mapperPackage.replaceAll("\\\\", ".");
+			String serviceName = toCamelName(tablename, true);
+			// 拼接service、serviceimpl
+			// 声明包
+			servicecode.append("package " + sp + ";\n\n");
+			System.out.println("写入：service包声明完成...............");
+			serviceimplcode.append("package " + sip + ";\n\n");
+			System.out.println("写入：serviceimpl包声明完成...............");
+			mappercode.append("package " + mp + ";\n\n");
+			System.out.println("写入：mapper包声明完成...............");
+
+			// 导入包
+			servicecode.append("import " + ep + "." + serviceName + ";\n");// 实体包
+			servicecode.append("import com.baomidou.mybatisplus.extension.service.IService;\n\n");// iservice包
+			System.out.println("写入：service包导入完成...............");
+			serviceimplcode.append("import " + ep + "." + serviceName + ";\n");// 实体包
+			serviceimplcode.append("import org.springframework.stereotype.Service;\n");
+			serviceimplcode.append("import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;\n");
+			serviceimplcode.append("import " + mp + "." + serviceName + "Mapper;\n");
+			serviceimplcode.append("import " + sp + ".I" + serviceName + "Service;\n\n");
+			System.out.println("写入：serviceimpl包导入完成...............");
+			mappercode.append("import " + ep + "." + serviceName + ";\n");// 实体包
+			mappercode.append("import com.baomidou.mybatisplus.core.mapper.BaseMapper;\n\n");// basemapper
+			System.out.println("写入：mapper包导入完成...............");
+
+			// 类注释
+			servicecode.append("\n/** \n * <p>\n * \t" + tableComment + " 服务接口\n * </p>\n *\n")
+					.append(" * @author " + author + "\n").append(" * @since " + nowdate + "\n */\n");
+			System.out.println("写入：service类注释完成...............");
+			serviceimplcode.append("\n/** \n * <p>\n * \t" + tableComment + " 服务接口实现类\n * </p>\n *\n")
+					.append(" * @author " + author + "\n").append(" * @since " + nowdate + "\n */\n");
+			System.out.println("写入：serviceimpl类注释完成...............");
+			mappercode.append("\n/** \n * <p>\n * \t" + tableComment + " mapper接口\n * </p>\n *\n")
+					.append(" * @author " + author + "\n").append(" * @since " + nowdate + "\n */\n");
+			System.out.println("写入：mapper类注释完成...............");
+
+			// 类注解
+			serviceimplcode.append("@Service\n");
+			System.out.println("写入：serviceimpl类注解完成...............");
+			// 类内容
+			servicecode
+					.append("public interface I" + serviceName + "Service extends IService<" + serviceName + "> {\n\n")
+					.append("}");
+			serviceimplcode.append("public class " + serviceName + "ServiceImpl extends ServiceImpl<" + serviceName
+					+ "Mapper, " + serviceName + "> implements I" + serviceName + "Service {\n\n").append("}");
+			mappercode
+					.append("public interface " + serviceName + "Mapper extends BaseMapper<" + serviceName + "> {\n\n")
+					.append("}");
+
+			// mapper.xml写入
+			xmlcode.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+			xmlcode.append(
+					"<!DOCTYPE mapper PUBLIC \"-//mybatis.org//DTD Mapper 3.0//EN\" \"http://mybatis.org/dtd/mybatis-3-mapper.dtd\">\n");
+			xmlcode.append("<mapper namespace=\"" + mp + "." + serviceName + "Mapper\">\n\n");
+			xmlcode.append("\t<!-- 通用查询映射结果 -->\n");
+			xmlcode.append("\t<resultMap id=\"BaseResultMap\" type=\"" + ep + "." + serviceName + "\">\n");
+			for (TableInfo tableInfo : columns) {
+				if ("PRI".equals(tableInfo.getColumnType())) {
+					xmlcode.append("\t\t<id column=\"" + tableInfo.getColumnName() + "\" property=\""
+							+ toCamelName(tableInfo.getColumnName(), false) + "\" />\n");
+				} else {
+					xmlcode.append("\t\t<result column=\"" + tableInfo.getColumnName() + "\" property=\""
+							+ toCamelName(tableInfo.getColumnName(), false) + "\" />\n");
+				}
+			}
+			xmlcode.append("\t</resultMap>\n\n");
+			xmlcode.append("</mapper>");
+
+			// 获取项目所在的本地路径
+			String projectPath = appPath.substring(0, appPath.lastIndexOf("\\")) + "\\mdns-service";// 实体存放路径
+			String filename1 = projectPath + javaPackage + servicePackage + "\\I" + serviceName + "Service.java";
+			String filename2 = projectPath + javaPackage + serviceimplPackage + "\\" + serviceName + "ServiceImpl.java";
+			String filename3 = projectPath + javaPackage + mapperPackage + "\\" + serviceName + "Mapper.java";
+			String filename4 = projectPath + resourcePackage + xmlPackage + "\\" + serviceName + "Mapper.xml";
+			writeFiles(filename1, servicecode.toString());
+			System.out.println("***********************service文件生成完成********************************");
+			writeFiles(filename2, serviceimplcode.toString());
+			System.out.println("***********************serviceimpl文件生成完成********************************");
+			writeFiles(filename3, mappercode.toString());
+			System.out.println("***********************mapper.java文件生成完成********************************");
+			writeFiles(filename4, xmlcode.toString());
+			System.out.println("***********************mapper.xml文件生成完成********************************");
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	/**
+	 * 创建实体,默认数据库名(yidong)
+	 * 
+	 * @param tablename 表名称
+	 * @param author    作者，用于类注释
+	 */
+	public static void createEntity(String tablename, String author) {
+		createEntity(tablename, author, "yidong");
+	}
+
+	/**
+	 * 创建实体,默认作者(wiselink),默认数据库名(yidong)
+	 * 
+	 * @param tablename 表名称
+	 */
+	public static void createEntity(String tablename) {
+		createEntity(tablename, "wiselink");
+	}
+
+	/**
+	 * 根据表名生成实体
+	 * 
+	 * @param tablename    表名
+	 * @param author       作者，用于类注释
+	 * @param databasename 数据库库名
+	 */
+	public static void createEntity(String tablename, String author, String databasename) {
+		try {
+			System.out.println("********************准备生成实体文件***********************************");
+			String tableComment = getTableComment(tablename, databasename);// 表注释
+			if ("".equals(tableComment) || null == tableComment) {
+				throw new Exception("表结构可能为空或表不存在于对应库中");
+			}
+			List<TableInfo> columns = getColumns(tablename, databasename);// 所有的字段和属性
+			if (columns.size() == 0) {
+				throw new Exception("表结构可能为空或表不存在于对应库中");
+			}
+			StringBuilder importPackage = new StringBuilder();// 存放需要导入的包
+			StringBuilder propertiesInfo = new StringBuilder();// 实体属性
+			StringBuilder code = new StringBuilder();// 整体文件
+			boolean datetime = true, decimal = true, date = true, jsonformat1 = true, jsonformat2 = true, json = true;// 判定包只需要导入一次
+			// 字段属性值拼接
+			for (TableInfo tableInfo : columns) {
+				String type = tableInfo.getColumnType();// 字段类型
+				String comment = tableInfo.getColumnComment();// 字段注释
+				String column = tableInfo.getColumnName();// 字段名
+				String javatype = dataType.get(type);// 字段对应的Java类型
+				if (javatype == null) {
+					throw new Exception("数据库 " + databasename + " ： 表 " + tablename + " ：字段 " + column + " ：类型" + type
+							+ "对应的Java类型未配置，需要先配置");
+				}
+				// 属性注释
+				propertiesInfo.append("\t/**\n\t * " + comment + "\n\t */\n");
+				// 接口文档采用的注释
+				if ("datetime".equals(type)) {
+					propertiesInfo.append(
+							"\t@ApiModelProperty(value = \"" + comment + "\", example = \"9999-12-31 23:59:59\")\n");
+				} else if ("date".equals(type)) {
+					propertiesInfo
+							.append("\t@ApiModelProperty(value = \"" + comment + "\", example = \"9999-12-31\")\n");
+				} else {
+					propertiesInfo.append("\t@ApiModelProperty(value = \"" + comment + "\", example = \"\")\n");
+				}
+
+				// 是否主键判定，决定注释名
+				if ("PRI".equals(tableInfo.getPrimaryKey())) {// 主键
+					propertiesInfo.append("\t@TableId(value = \"" + column + "\", type = IdType.AUTO)\n");
+				} else {// 非主键
+					propertiesInfo.append("\t@TableField(\"" + column + "\")\n");
+				}
+				// 判定是不是日期类型需要转换格式
+				if (jsonformat1 && "datetime".equals(type)) {
+					propertiesInfo.append("\t@JsonFormat(pattern = \"yyyy-MM-dd HH:mm:ss\")\n");
+					importPackage.append("import com.fasterxml.jackson.annotation.JsonFormat;\n");
+					jsonformat1 = false;
+				} else if (jsonformat2 && "date".equals(type)) {
+					propertiesInfo.append("\t@JsonFormat(pattern = \"yyyy-MM-dd\")\n");
+					importPackage.append("import com.fasterxml.jackson.annotation.JsonFormat;\n");
+					jsonformat2 = false;
+				}
+				// 属性注入
+				propertiesInfo.append("\tprivate " + javatype + " " + toCamelName(column, false) + ";\n\n");
+				// 特殊包导入
+				if (datetime && "datetime".equals(type)) {
+					importPackage.append("import java.time.LocalDateTime;\n");
+					datetime = false;
+				} else if (date && "date".equals(type)) {
+					importPackage.append("import java.time.LocalDate;\n");
+					date = false;
+				} else if (decimal && "decimal".equals(type)) {
+					importPackage.append("import java.math.BigDecimal;\n");
+					decimal = false;
+				} else if (json && "json".equals(type)) {
+					importPackage.append("import com.alibaba.fastjson.JSON;\n");
+					json = false;
+				}
+			}
+
+			// 需要导入公共包(包含ID自增、ID注明、非主键著名、序列化、lombok相关包的导入)
+			importPackage.append("import com.baomidou.mybatisplus.annotation.IdType;\n")
+					.append("import com.baomidou.mybatisplus.annotation.TableId;\n")
+					.append("import com.baomidou.mybatisplus.annotation.TableField;\n")
+					.append("import io.swagger.annotations.ApiModel;\n")
+					.append("import io.swagger.annotations.ApiModelProperty;\n")
+					.append("import java.io.Serializable;\n").append("import lombok.Data;\n")
+					.append("import lombok.EqualsAndHashCode;\n").append("import lombok.experimental.Accessors;\n");
+			// 拼接文件内容
+			// 声明包
+			code.append("package ").append(entityPackage.replaceAll("\\\\", ".")).append(";\n\n");
+			System.out.println("写入：声明包完成...............");
+			// 导入包
+			code.append(importPackage);
+			System.out.println("写入：导入包完成...............");
+			// 类注释
+			code.append("\n/** \n * <p>\n * \t" + tableComment + "\n * </p>\n *\n")
+					.append(" * @author " + author + "\n").append(" * @since " + nowdate + "\n */\n");
+			System.out.println("写入：类注释完成...............");
+			// 类注解
+			code.append("@Data\n").append("@EqualsAndHashCode(callSuper = false)\n")
+					.append("@Accessors(chain = true)\n")
+					.append("@ApiModel(value = \"" + tableComment + "\",description = \"" + tableComment + "\")\n");
+			System.out.println("写入：类注解完成...............");
+			// class外层
+			code.append("public class " + toCamelName(tablename, true) + " implements Serializable{\n");
+			code.append("\n\tprivate static final long serialVersionUID = 1L;\n\n");
+			// 属性
+			code.append(propertiesInfo);
+			code.append("}");
+			System.out.println("写入：class完成...............");
+
+			// 获取项目所在的本地路径
+			String projectPath = appPath.substring(0, appPath.lastIndexOf("\\")) + "\\mdns-model";// 实体存放路径
+			String entityClassName = toCamelName(tablename, true);
+			String filename = projectPath + javaPackage + entityPackage + "\\" + entityClassName + ".java";
+			writeFiles(filename, code.toString());
+			System.out.println("***********************实体文件生成完成********************************");
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	// 写文件
+	public static void writeFiles(String path, String code) {
+		File file = new File(path);
+		try {
+			if (!file.exists()) {
+				file.createNewFile();
+			}
+			BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file)));
+			writer.write(code);
+			writer.flush();
+			writer.close();
+
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	// 获取数据库链接
+	public static Connection getConnection() throws Exception {
+		return DriverManager.getConnection(ds_url, ds_username, ds_password);
+	}
+
+	/**
+	 * 下划线转驼峰命名
+	 * 
+	 * @param name 需要转化的字符串
+	 * @param flag 需要转化的如果为表名，则为true，反之为false
+	 * @return 转化好的字符串
+	 */
+	public static String toCamelName(String name, boolean flag) {
+		if (null == name || "".equals(name)) {
+			return null;
+		}
+		// 先按下划线切成数组
+		String[] namearr = name.toLowerCase().split("_");
+		int n = 0;
+		if (!flag)
+			n = 1;
+		for (int j = n; j < namearr.length; j++) {
+			char[] chararr = namearr[j].toCharArray();// 字符串转字符数组
+			chararr[0] -= 32;
+			namearr[j] = new String(chararr);
+		}
+		return StringUtils.join(namearr);
+	}
+}
